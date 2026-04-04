@@ -94,6 +94,8 @@ func getTabNames() []string {
 		"Languages",
 		"Categories",
 		"Guides",
+		"Favorites",
+		"History",
 	}
 }
 

@@ -61,7 +61,7 @@ func (p *Player) Play(title, url string) error {
 	var cmd *exec.Cmd
 	switch {
 	case strings.Contains(playerName, "mpv"):
-		cmd = exec.Command(p.path, "--force-window", "--title="+title, "--really-quiet", url)
+		cmd = exec.Command(p.path, "--force-window", "--autofit=100%", "--title="+title, "--really-quiet", url)
 	case strings.Contains(playerName, "vlc") || strings.Contains(playerName, "cvlc"):
 		cmd = exec.Command(p.path, "--play-and-exit", "--no-video-title-show", url)
 	default:
@@ -102,7 +102,7 @@ func (p *Player) PlayWithReferrer(title, url, referrer, userAgent string) error 
 	var args []string
 	switch {
 	case strings.Contains(playerName, "mpv"):
-		args = []string{"--force-window", "--title=" + title}
+		args = []string{"--force-window", "--autofit=100%", "--title=" + title}
 		if referrer != "" {
 			args = append(args, "--referrer="+referrer)
 		}

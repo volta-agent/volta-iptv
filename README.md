@@ -1,134 +1,86 @@
 # Volta IPTV
 
-A terminal user interface (TUI) for searching and watching free IPTV streams from around the world.
+Terminal IPTV stream finder. Search thousands of free TV channels from around the world, pick a quality, hit play.
 
-Powered by [iptv-org](https://github.com/iptv-org/iptv) database.
+Powered by [iptv-org](https://github.com/iptv-org/iptv).
 
-## Features
+## What it does
 
-- **6 Search Categories**: Channels, Countries, Languages, Categories, Streams, Guides
-- **Tab Navigation**: Easy switching between search modes
-- **Real-time Search**: Filter as you type
-- **Favorites System**: Save favorite channels with `★` indicator
-- **History Tracking**: Remembers last 50 played streams
-- **Dual Player Support**: mpv (primary) with vlc fallback
-- **Offline Mode**: Data cached locally for instant startup
-- **Auto-refresh**: Updates data every 24 hours in background
+- Search channels by name, country, language, or category
+- Quality picker when multiple streams available
+- Favorites and history tracking
+- Kids mode (filters adult content)
+- Stream filter (hide channels without streams)
+- Works offline (caches everything locally)
+- Plays in mpv or VLC (auto-fits to screen)
 
-## Installation
-
-### Prerequisites
-
-- Go 1.22+
-- mpv or vlc (for playback)
-
-### Build from Source
+## Install
 
 ```bash
 git clone https://github.com/volta-agent/volta-iptv.git
 cd volta-iptv
 make build
+make install  # installs to ~/.local/bin
 ```
 
-### Install
+Requirements: Go 1.22+, mpv or VLC.
 
-```bash
-make install
-```
+**Install mpv:**
+- macOS: `brew install mpv`
+- Debian/Ubuntu: `sudo apt install mpv`
+- Fedora/RHEL: `sudo dnf install mpv`
 
-This installs `volta-iptv` to `~/.local/bin/`. Make sure it's in your PATH.
+**Install VLC:**
+- macOS: `brew install vlc`
+- Debian/Ubuntu: `sudo apt install vlc`
+- Fedora/RHEL: `sudo dnf install vlc`
 
-## Usage
+## Use
 
 ```bash
 volta-iptv
 ```
 
-### Key Bindings
-
-| Key | Action |
-|-----|--------|
-| `Tab` / `Shift+Tab` | Switch between tabs |
-| `/` | Focus search input |
-| `↑/↓` or `j/k` | Navigate results |
-| `Enter` | Search / Play selected stream |
+| Key | What it does |
+|-----|--------------|
+| `Tab` | Next tab |
+| `/` | Search |
+| `↑/↓` | Navigate |
+| `Enter` | Play (or drill down on Countries/Languages/Categories) |
 | `f` | Toggle favorite |
-| `r` | Refresh data from API |
-| `?` | Toggle help screen |
-| `q` / `Ctrl+C` | Quit |
+| `s` | Toggle "streams only" filter |
+| `k` | Toggle kids mode (filters adult content) |
+| `r` | Refresh data |
+| `?` | Help |
+| `q` | Quit |
 
-### Search Tabs
+## Tabs
 
-1. **Channels** - Search by channel name (e.g., "BBC", "CNN")
-2. **Countries** - Browse by country code (e.g., "US", "UK")
-3. **Languages** - Browse by language (e.g., "English", "French")
-4. **Categories** - Browse by genre (e.g., "News", "Sports")
+1. **Channels** - Find by name
+2. **Countries** - Browse by country, Enter drills down to channels
+3. **Languages** - Browse by language
+4. **Categories** - Browse by genre (News, Sports, etc.)
 5. **Streams** - Direct stream search
-6. **Guides** - EPG program guide search
+6. **Guides** - EPG data (search required - 160K+ entries)
+7. **Favorites** - Your saved channels
+8. **History** - Recently played
 
-## Data Storage
+## Data
 
-All data is stored in XDG-compliant locations:
-
-```
-~/.cache/volta-iptv/
-├── database.json # Cached API data
-
-~/.config/volta-iptv/
-├── favorites.json # Saved favorites
-├── history.json # Playback history
-└── config.json # User preferences
-```
-
-## API
-
-Volta IPTV uses the [iptv-org API](https://github.com/iptv-org/api):
-
-- `https://iptv-org.github.io/api/channels.json`
-- `https://iptv-org.github.io/api/streams.json`
-- `https://iptv-org.github.io/api/countries.json`
-- `https://iptv-org.github.io/api/languages.json`
-- `https://iptv-org.github.io/api/categories.json`
-- `https://iptv-org.github.io/api/guides.json`
-
-## Development
-
-### Project Structure
+Everything stored locally:
 
 ```
-volta-iptv/
-├── cmd/volta-iptv/    # Entry point
-├── internal/
-│   ├── api/           # IPTV.org API client
-│   ├── models/        # Data models
-│   ├── player/        # mpv/vlc integration
-│   ├── storage/       # Persistence layer
-│   └── tui/           # Bubble Tea TUI
-├── Makefile
-└── go.mod
+~/.cache/volta-iptv/database.json    # Cached API data (24hr refresh)
+~/.config/volta-iptv/favorites.json  # Your favorites
+~/.config/volta-iptv/history.json    # Last 50 played
 ```
 
-### Commands
+## Source
 
-```bash
-make build    # Build binary
-make run      # Run directly
-make install  # Install to ~/.local/bin
-make clean    # Clean build artifacts
-make test     # Run tests
-```
-
-## License
-
-MIT
-
-## Credits
-
-- [iptv-org](https://github.com/iptv-org) for the free IPTV database
-- [Charm](https://charm.sh) for the amazing Bubble Tea TUI framework
+This project is built with:
+- [Bubble Tea](https://github.com/charmbracelet/bubbletea) - TUI framework
+- [iptv-org API](https://github.com/iptv-org/api) - Stream database
 
 ---
 
-**BTC Donations**: `1NV2myQZNXU1ahPXTyZJnGF7GfdC4SZCN2`
-
-If you find this tool useful, consider supporting development.
+BTC: `1NV2myQZNXU1ahPXTyZJnGF7GfdC4SZCN2`

@@ -19,7 +19,9 @@ const (
 	tabLanguages
 	tabCategories
 	tabGuides
-	numTabs = 5
+	tabFavorites
+	tabHistory
+	numTabs = 7
 )
 
 type ResultItem struct {
@@ -32,22 +34,29 @@ type ResultItem struct {
 }
 
 type Model struct {
-	api     *api.Client
-	player  *player.Player
+	api *api.Client
+	player *player.Player
 	storage *storage.Storage
 
-	currentTab      int
-	searchInput     textinput.Model
-	results         []ResultItem
-	selectedIndex   int
-	searchQuery     string
-	loading         bool
-	err             error
-	statusMessage   string
-	showHelp        bool
+	currentTab int
+	searchInput textinput.Model
+	results []ResultItem
+	selectedIndex int
+	searchQuery string
+	loading bool
+	err error
+	statusMessage string
+	showHelp bool
 	onlyWithStreams bool
+	kidsMode bool
 
-	width  int
+	// Stream selection mode
+	showStreamPicker bool
+	pickerChannel    *models.Channel
+	pickerStreams    []models.Stream
+	pickerIndex      int
+
+	width int
 	height int
 }
 
@@ -96,6 +105,11 @@ func loadDataCmd(apiClient *api.Client) tea.Cmd {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
+	// Handle stream picker mode separately
+	if m.showStreamPicker {
+		return m.updatePicker(msg)
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.Type {
@@ -110,12 +124,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.currentTab = (m.currentTab + 1) % numTabs
 			m.results = m.filterResults(m.searchQuery)
 			m.selectedIndex = 0
+			m.statusMessage = ""
 			return m, nil
 
 		case tea.KeyShiftTab:
 			m.currentTab = (m.currentTab - 1 + numTabs) % numTabs
 			m.results = m.filterResults(m.searchQuery)
 			m.selectedIndex = 0
+			m.statusMessage = ""
 			return m, nil
 
 		case tea.KeyUp, tea.KeyCtrlP:
@@ -123,12 +139,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.searchInput.Blur()
 			} else if m.selectedIndex > 0 {
 				m.selectedIndex--
+				m.statusMessage = ""
 			}
 
 		case tea.KeyDown, tea.KeyCtrlN:
 			if !m.searchInput.Focused() {
 				if m.selectedIndex < len(m.results)-1 {
 					m.selectedIndex++
+					m.statusMessage = ""
 				}
 			}
 
@@ -154,18 +172,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if string(msg.Runes) == "f" && !m.searchInput.Focused() && !m.showHelp {
 				return m.handleFavorite()
 			}
-			if string(msg.Runes) == "s" && !m.searchInput.Focused() && !m.showHelp {
-				m.onlyWithStreams = !m.onlyWithStreams
-				m.results = m.filterResults(m.searchQuery)
-				m.selectedIndex = 0
-				if m.onlyWithStreams {
-					m.statusMessage = "Filter: Only channels with streams"
-				} else {
-					m.statusMessage = "Filter: All channels"
-				}
-				return m, nil
+		if string(msg.Runes) == "s" && !m.searchInput.Focused() && !m.showHelp {
+			m.onlyWithStreams = !m.onlyWithStreams
+			m.results = m.filterResults(m.searchQuery)
+			m.selectedIndex = 0
+			if m.onlyWithStreams {
+				m.statusMessage = "Filter: Only channels with streams"
+			} else {
+				m.statusMessage = "Filter: All channels"
 			}
-			if string(msg.Runes) == "q" && !m.searchInput.Focused() {
+			return m, nil
+		}
+		if string(msg.Runes) == "k" && !m.searchInput.Focused() && !m.showHelp {
+			m.kidsMode = !m.kidsMode
+			m.results = m.filterResults(m.searchQuery)
+			m.selectedIndex = 0
+			if m.kidsMode {
+				m.statusMessage = "Kids mode: ON (adult content filtered)"
+			} else {
+				m.statusMessage = "Kids mode: OFF"
+			}
+			return m, nil
+		}
+		if string(msg.Runes) == "q" && !m.searchInput.Focused() {
 				if m.showHelp {
 					m.showHelp = false
 					return m, nil
@@ -219,12 +248,47 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var tiCmd tea.Cmd
 	m.searchInput, tiCmd = m.searchInput.Update(msg)
 	if m.searchInput.Focused() {
-		m.searchQuery = m.searchInput.Value()
+		newQuery := m.searchInput.Value()
+		if newQuery != m.searchQuery {
+			m.statusMessage = ""
+		}
+		m.searchQuery = newQuery
 		m.results = m.filterResults(m.searchQuery)
 	}
 	cmds = append(cmds, tiCmd)
 
 	return m, tea.Batch(cmds...)
+}
+
+// updatePicker handles input for stream quality picker
+func (m *Model) updatePicker(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyEscape, tea.KeyCtrlC:
+			m.showStreamPicker = false
+			return m, nil
+		case tea.KeyUp, tea.KeyCtrlP:
+			if m.pickerIndex > 0 {
+				m.pickerIndex--
+			}
+		case tea.KeyDown, tea.KeyCtrlN:
+			if m.pickerIndex < len(m.pickerStreams)-1 {
+				m.pickerIndex++
+			}
+		case tea.KeyEnter:
+			// Play selected stream
+			stream := m.pickerStreams[m.pickerIndex]
+			m.storage.AddToHistory(m.pickerChannel.ID, m.pickerChannel.Name, stream.URL)
+			m.statusMessage = fmt.Sprintf("Launching: %s (%s)", m.pickerChannel.Name, stream.Quality)
+			if err := m.player.Play(m.pickerChannel.Name, stream.URL); err != nil {
+				m.statusMessage = fmt.Sprintf("Error: %v", err)
+			}
+			m.showStreamPicker = false
+			return m, nil
+		}
+	}
+	return m, nil
 }
 
 func (m *Model) handleFavorite() (tea.Model, tea.Cmd) {
@@ -291,18 +355,31 @@ func (m *Model) handlePlay() (tea.Model, tea.Cmd) {
 	}
 
 	var channel *models.Channel
+	var streams []models.Stream
 	var streamURL string
 
 	switch data := result.Data.(type) {
 	case models.Channel:
 		channel = &data
-		streams := m.api.GetStreamsForChannel(channel.ID)
+		streams = m.api.GetStreamsForChannel(channel.ID)
+		// If multiple streams, show picker
+		if len(streams) > 1 {
+			m.showStreamPicker = true
+			m.pickerChannel = channel
+			m.pickerStreams = streams
+			m.pickerIndex = 0
+			return m, nil
+		}
 		if len(streams) > 0 {
 			streamURL = streams[0].URL
 		}
 	case models.Stream:
 		streamURL = data.URL
 		channel = m.api.GetChannelByID(data.Channel)
+	case models.HistoryEntry:
+		// Play directly from history
+		streamURL = data.URL
+		channel = m.api.GetChannelByID(data.ChannelID)
 	}
 
 	if streamURL == "" {
@@ -336,9 +413,12 @@ func (m Model) filterResults(query string) []ResultItem {
 			if m.onlyWithStreams && !m.hasStream(ch.ID) {
 				continue
 			}
-			if query == "" ||
-				strings.Contains(strings.ToLower(ch.Name), query) ||
-				strings.Contains(strings.ToLower(ch.ID), query) {
+			// Skip adult content in kids mode
+			if m.kidsMode && m.isAdultContent(ch) {
+				continue
+			}
+			// Search by channel name, ID, country name, or category
+			if m.matchesChannel(ch, query) {
 				country := m.api.FindCountryByCode(ch.Country)
 				countryName := ch.Country
 				if country != nil {
@@ -415,20 +495,61 @@ func (m Model) filterResults(query string) []ResultItem {
 		}
 
 	case tabGuides:
-		for _, g := range m.api.GetGuides() {
+		// Only load guides when searching - too many to display all
+		if query != "" {
+			for _, g := range m.api.GetGuides() {
+				if strings.Contains(strings.ToLower(g.SiteName), query) {
+					channel := m.api.GetChannelByID(g.Channel)
+					channelName := g.Channel
+					if channel != nil {
+						channelName = channel.Name
+					}
+					results = append(results, ResultItem{
+						ID:        g.Channel,
+						Title:     g.SiteName,
+						Subtitle:  channelName,
+						Info:      g.Site,
+						Data:      g,
+					})
+				}
+			}
+		}
+
+	case tabFavorites:
+		for _, fav := range m.storage.GetFavorites() {
+			channel := m.api.GetChannelByID(fav.ChannelID)
+			if channel == nil {
+				continue
+			}
 			if query == "" ||
-				strings.Contains(strings.ToLower(g.SiteName), query) {
-				channel := m.api.GetChannelByID(g.Channel)
-				channelName := g.Channel
-				if channel != nil {
-					channelName = channel.Name
+				strings.Contains(strings.ToLower(channel.Name), query) ||
+				strings.Contains(strings.ToLower(channel.ID), query) {
+				country := m.api.FindCountryByCode(channel.Country)
+				countryName := channel.Country
+				if country != nil {
+					countryName = country.Flag + " " + country.Name
 				}
 				results = append(results, ResultItem{
-					ID:       g.Channel,
-					Title:    g.SiteName,
-					Subtitle: channelName,
-					Info:     g.Site,
-					Data:     g,
+					ID:         channel.ID,
+					Title:      channel.Name,
+					Subtitle:   countryName,
+					Info:       strings.Join(channel.Categories, ", "),
+					IsFavorite: true,
+					Data:       *channel,
+				})
+			}
+		}
+
+	case tabHistory:
+		for _, h := range m.storage.GetHistory() {
+			if query == "" ||
+				strings.Contains(strings.ToLower(h.Name), query) {
+				results = append(results, ResultItem{
+					ID:       h.ChannelID,
+					Title:    h.Name,
+					Subtitle: fmt.Sprintf("Played %d times", h.PlayCount),
+					Info:     h.URL,
+					Data:     h,
 				})
 			}
 		}
@@ -529,9 +650,75 @@ func (m Model) hasStream(channelID string) bool {
 	return len(streams) > 0
 }
 
+// matchesChannel checks if a channel matches the search query
+// Searches by channel name, ID, country name, language, or category
+func (m Model) matchesChannel(ch models.Channel, query string) bool {
+	if query == "" {
+		return true
+	}
+
+	// Check channel name and ID
+	if strings.Contains(strings.ToLower(ch.Name), query) ||
+		strings.Contains(strings.ToLower(ch.ID), query) {
+		return true
+	}
+
+	// Check country name
+	if country := m.api.FindCountryByCode(ch.Country); country != nil {
+		if strings.Contains(strings.ToLower(country.Name), query) {
+			return true
+		}
+	}
+
+	// Check categories
+	for _, catID := range ch.Categories {
+		if cat := m.api.FindCategoryByID(catID); cat != nil {
+			if strings.Contains(strings.ToLower(cat.Name), query) {
+				return true
+			}
+		}
+	}
+
+	// Check languages (from country)
+	if country := m.api.FindCountryByCode(ch.Country); country != nil {
+		for _, langCode := range country.Languages {
+			if lang := m.api.FindLanguageByCode(langCode); lang != nil {
+				if strings.Contains(strings.ToLower(lang.Name), query) {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+// isAdultContent checks if a channel has adult categories
+func (m Model) isAdultContent(ch models.Channel) bool {
+	for _, cat := range ch.Categories {
+		if cat == "xxx" || cat == "adult" {
+			return true
+		}
+	}
+	// Also check channel name for common adult keywords
+	name := strings.ToLower(ch.Name)
+	adultKeywords := []string{"xxx", "porn", "adult", "sex", "18+", "erotic"}
+	for _, kw := range adultKeywords {
+		if strings.Contains(name, kw) {
+			return true
+		}
+	}
+	return false
+}
+
 func (m Model) View() string {
 	if m.width == 0 {
 		return "Loading..."
+	}
+
+	// Show stream picker overlay
+	if m.showStreamPicker {
+		return m.renderStreamPicker()
 	}
 
 	if m.showHelp {
@@ -556,7 +743,11 @@ func (m Model) View() string {
 	if m.loading {
 		sections = append(sections, HelpStyle.Render("Loading data from iptv-org..."))
 	} else if len(m.results) == 0 && m.searchQuery == "" {
-		sections = append(sections, HelpStyle.Render("Type to search or press '/' to focus search"))
+		if m.currentTab == tabGuides {
+			sections = append(sections, HelpStyle.Render("160K+ guides - type to search (required)"))
+		} else {
+			sections = append(sections, HelpStyle.Render("Type to search or press '/' to focus search"))
+		}
 	} else if len(m.results) == 0 {
 		sections = append(sections, HelpStyle.Render("No results found"))
 	} else {
@@ -595,7 +786,7 @@ func (m Model) View() string {
 		sections = append(sections, HelpStyle.Render(pageInfo))
 	}
 
-	footer := HelpStyle.Render("?: Help | Tab: Switch | /: Search | Enter: Play | f: Favorite | s: Stream filter | r: Refresh | q: Quit")
+	footer := HelpStyle.Render("?: Help | Tab: Switch | /: Search | Enter: Play | f: Fav | s: Streams | k: Kids | r: Refresh | q: Quit")
 	sections = append(sections, footer)
 
 	if m.statusMessage != "" {
@@ -610,38 +801,41 @@ func (m Model) renderHelp() string {
 
 	helpContent := `
 Navigation:
-  Tab / Shift+Tab    Switch between search categories
-  ↑/↓ or j/k         Navigate results
-  Enter              Play selected stream / Drill down
+ Tab / Shift+Tab Switch between search categories
+ ↑/↓ or j/k Navigate results
+ Enter Play selected stream / Drill down
 
 Search:
-  /                  Focus search input
-  Type               Search as you type
-  Backspace          Delete last character
-  Esc                Blur search input
+ / Focus search input
+ Type Search as you type
+ Backspace Delete last character
+ Esc Blur search input
 
 Actions:
-  f                  Toggle favorite (★)
-  s                  Toggle stream filter (show only channels with streams)
-  r                  Refresh data from API
+ f Toggle favorite (★)
+ s Toggle stream filter (show only channels with streams)
+ k Toggle kids mode (filter adult content)
+ r Refresh data from API
 
 General:
-  ?                  Toggle this help screen
-  q or Ctrl+C        Quit
+ ? Toggle this help screen
+ q or Ctrl+C Quit
 
 Tabs:
-  1. Channels        Search by channel name
-  2. Countries       Browse by country (Enter to filter)
-  3. Languages       Browse by language (Enter to filter)
-  4. Categories      Browse by genre (Enter to filter)
-  5. Guides          EPG program guides
+ 1. Channels Search by channel name
+ 2. Countries Browse by country (Enter to filter)
+ 3. Languages Browse by language (Enter to filter)
+ 4. Categories Browse by genre (Enter to filter)
+ 5. Guides EPG program guides
+ 6. Favorites Your saved favorite channels
+ 7. History Recently played streams
 
 Data:
-  Channels, streams, and metadata are cached locally
-  at ~/.cache/volta-iptv/ and refreshed every 24 hours.
+ Channels, streams, and metadata are cached locally
+ at ~/.cache/volta-iptv/ and refreshed every 24 hours.
 
-  Favorites: ~/.config/volta-iptv/favorites.json
-  History:   ~/.config/volta-iptv/history.json
+ Favorites: ~/.config/volta-iptv/favorites.json
+ History: ~/.config/volta-iptv/history.json
 
 Player:
   Requires mpv or vlc installed.
@@ -657,6 +851,35 @@ Player:
 	pressQ := HelpStyle.Render("Press ? or q to close this help screen")
 
 	return lipgloss.JoinVertical(lipgloss.Left, helpTitle, helpBox, pressQ)
+}
+
+// renderStreamPicker shows quality selection for channels with multiple streams
+func (m Model) renderStreamPicker() string {
+	title := TitleStyle.Render(fmt.Sprintf("📺 Select Stream Quality - %s", m.pickerChannel.Name))
+
+	var items []string
+	for i, stream := range m.pickerStreams {
+		style := ListItemStyle
+		if i == m.pickerIndex {
+			style = SelectedListItemStyle
+		}
+		quality := stream.Quality
+		if quality == "" {
+			quality = "unknown"
+		}
+		line := fmt.Sprintf("  %s", quality)
+		items = append(items, style.Render(line))
+	}
+
+	footer := HelpStyle.Render("↑/↓: Navigate | Enter: Play | Esc: Cancel")
+
+	content := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(accentColor).
+		Padding(1, 2).
+		Render(strings.Join(items, "\n"))
+
+	return lipgloss.JoinVertical(lipgloss.Left, title, content, footer)
 }
 
 func min(a, b int) int {

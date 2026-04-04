@@ -239,3 +239,25 @@ func (c *Client) FindCountryByCode(code string) *models.Country {
 	}
 	return nil
 }
+
+func (c *Client) FindLanguageByCode(code string) *models.Language {
+	c.dataMu.RLock()
+	defer c.dataMu.RUnlock()
+	for _, l := range c.data.Languages {
+		if l.Code == code {
+			return &l
+		}
+	}
+	return nil
+}
+
+func (c *Client) FindCategoryByID(id string) *models.Category {
+	c.dataMu.RLock()
+	defer c.dataMu.RUnlock()
+	for _, cat := range c.data.Categories {
+		if cat.ID == id {
+			return &cat
+		}
+	}
+	return nil
+}
